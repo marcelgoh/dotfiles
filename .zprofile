@@ -24,11 +24,6 @@ export PATH="$PATH:/usr/local/smlnj/bin"
 # Use : bb filename > file.tex ; 
 #       bb filename >> file.tex
 bb () {
-    # MACHINE="muff"
-    # SORTBIB="rsh $MACHINE /usr/bin/sortbib"
-    # rcp $1 luc@$MACHINE:/home/cgm/profs/luc/$1bb 
-        # uncomment
-    # rcp $1 luc@lisa:/u0/prof/luc/$1bb
     if test -f ./ref.tmp
         then rm ./ref.tmp
         fi
