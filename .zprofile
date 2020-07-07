@@ -8,6 +8,41 @@ alias skim='/Applications/Skim.app/Contents/MacOS/Skim'
 alias rer='source ranger'
 export PATH="$PATH:/usr/local/smlnj/bin"
 
+# Written by Luc Devroye
+sortbibnameA () {
+    filename=$1
+    key="%A"
+    editfile=/tmp/ed$$
+    rm -f $editfile
+    indexfile=/tmp/sort$$
+    rm -f $indexfile
+
+    sed '/ring;/s///g' $filename |
+    sed '/acute;/s///g' |
+    sed '/grave;/s///g' |
+    sed '/uml;/s///g' |
+    sed '/\\0/s///g' |
+    awk 'BEGIN {b=0 ; line=0}\
+        { line = line + 1 }\
+        $0 !~ /^%/ && ( ( b == 1 ) || ( b == 3 ) ) { e = line - 1 ; b = 2  }\
+        /^%/ && b == 0 { a = line ; b = 1 }\
+        /^%A/ && b != 3 { n = $NF ; t = substr($0,4,length($0)-3) ; b = 3 }\
+        /^%D/ { d = substr($0,4,length($0)-3) }\
+        b == 2 { print a " " e " " n t d ; b = 0 }\
+        END { if ( b == 1  || b == 3 ) { print a " " line  " " n t d } }\
+    ' |
+    sort -k 3 -df |
+    awk ' { print "head -" $2 " $1 | tail -" $2-$1+1 " >> $2" ; print "echo \"\" >> $2" } ' > $editfile
+
+    # cat $editfile
+    echo "" > $indexfile
+    sh $editfile $filename $indexfile
+    cat $indexfile
+
+    rm -f $editfile
+    rm -f $indexfile
+}
+
 # bb : roff-format biblio to tex 
 #
 # Luc Devroye
@@ -27,8 +62,7 @@ bb () {
     if test -f ./ref.tmp
         then rm ./ref.tmp
         fi
-    # sortbibnameA $1 |  sed '/\\0/s// /g'  > /tmp/ref.$$
-    cat $1 |  sed '/\\0/s// /g'  > ./ref.tmp
+    sortbibnameA $1 |  sed '/\\0/s// /g'  > ./ref.tmp
     # $SORTBIB -sA+D $1bb  |  sed '/\\0/s// /g'  > /tmp/ref.$$ 
         # uncomment
     # sed '/\\0/s// /g' R > /tmp/ref.$$          
@@ -36,53 +70,53 @@ bb () {
     #clean /tmp/ref.$$ 
     echo "" >> ./ref.tmp
     awk 'BEGIN { count=0 ; author=0 ; tslanted = 0 ; totalauthor=0 }\
-    $0 == "" { count += 1 ; p=0 ;  author=0   }\
-    $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
-    $1 == "%T" { p=20  ; author=0}\
-    $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
-    $1 == "%L" { p=50 ; author=0}\
-    $1 == "%E" { p=55 ; author=0 }\
-    $1 == "%V" { p=60  ; author=0}\
-    $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
-    $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
-    $1 == "%C" { p=140 ; author=0 }\
-    $1 == "%I" { p=160 ; author=0 }\
-    $1 == "%D" { p=180 ; author=0 }\
-    $1 == "%O" { p=200  ; author=0}\
-    $1 == "%P" { p=210 ; author=0}\
-    $1 == "%Y" { p=220 ; author=0}\
-    /^$/ { print count*250+p+NR " " 0 " %K " totalauthor " " tslanted ; totalauthor = 0 ; tslanted = 0 }\
-    /^$/||/^%[ATJVLPDOBREICY]/ { print count*250+p+NR+1 " " author " " $0 }\
+        $0 == "" { count += 1 ; p=0 ;  author=0   }\
+        $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
+        $1 == "%T" { p=20  ; author=0}\
+        $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
+        $1 == "%L" { p=50 ; author=0}\
+        $1 == "%E" { p=55 ; author=0 }\
+        $1 == "%V" { p=60  ; author=0}\
+        $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
+        $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
+        $1 == "%C" { p=140 ; author=0 }\
+        $1 == "%I" { p=160 ; author=0 }\
+        $1 == "%D" { p=180 ; author=0 }\
+        $1 == "%O" { p=200  ; author=0}\
+        $1 == "%P" { p=210 ; author=0}\
+        $1 == "%Y" { p=220 ; author=0}\
+        /^$/ { print count*250+p+NR " " 0 " %K " totalauthor " " tslanted ; totalauthor = 0 ; tslanted = 0 }\
+        /^$/||/^%[ATJVLPDOBREICY]/ { print count*250+p+NR+1 " " author " " $0 }\
     ' ./ref.tmp |
     sort -n |
     sed '/^.*%/s//%/' |
     awk 'substr( $0 , 1 , 1 ) != "%" { print "" } substr($0, 1, 1) == "%" { print $0 }' |
     awk 'BEGIN { count=0 ; author=0 ; tslanted = 0 ; totalauthor=0 }\
-    $0 == "" { count += 1 ; p=-40 ;  author=0   }\
-    $1 == "%K" { p=-20 }\
-    $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
-    $1 == "%T" { p=20  ; author=0}\
-    $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
-    $1 == "%L" { p=50 ; author=0}\
-    $1 == "%E" { p=55 ; author=0 }\
-    $1 == "%V" { p=60  ; author=0}\
-    $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
-    $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
-    $1 == "%C" { p=140 ; author=0 }\
-    $1 == "%I" { p=160 ; author=0 }\
-    $1 == "%D" { p=180 ; author=0 }\
-    $1 == "%O" { p=200  ; author=0}\
-    $1 == "%P" { p=210 ; author=0}\
-    $1 == "%Y" { p=220 ; author=0}\
-    { print count*300+p+NR " " author " " $0 }\
+        $0 == "" { count += 1 ; p=-40 ;  author=0   }\
+        $1 == "%K" { p=-20 }\
+        $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
+        $1 == "%T" { p=20  ; author=0}\
+        $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
+        $1 == "%L" { p=50 ; author=0}\
+        $1 == "%E" { p=55 ; author=0 }\
+        $1 == "%V" { p=60  ; author=0}\
+        $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
+        $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
+        $1 == "%C" { p=140 ; author=0 }\
+        $1 == "%I" { p=160 ; author=0 }\
+        $1 == "%D" { p=180 ; author=0 }\
+        $1 == "%O" { p=200  ; author=0}\
+        $1 == "%P" { p=210 ; author=0}\
+        $1 == "%Y" { p=220 ; author=0}\
+        { print count*300+p+NR " " author " " $0 }\
     ' |
     sort -n  |
     sed '/^.*%/s//%/' |
     sed '/^[0-9\-]/s/^.*$//' |
     awk 'BEGIN { ac = 0 }\
-    $1 == "%K" { ac = 0 ; slant = $3 ; author = $2 }\
-    $1 == "%A" { ac += 1 }\
-    $1 != "%K" { print slant " " author " " ac " " $0 }\
+        $1 == "%K" { ac = 0 ; slant = $3 ; author = $2 }\
+        $1 == "%A" { ac += 1 }\
+        $1 != "%K" { print slant " " author " " ac " " $0 }\
     ' |
     awk '$4 == "%P" || $4 == "%O" { print $0 "." }\
     $4 != "%P" && $4 != "%O" { print $0 ","} ' |
@@ -97,7 +131,7 @@ bb () {
     sed '/%D/s/,$/),/' |
     sed '/%C/s/%C /%C (/' |
     sed '/%C/s/,$/:/' |
-    sed '/%Y/s/,$/.)/' |
+    sed '/%Y/s/,$/)./' |
     sed '/%P/s/-/--/' |
     sed '/%E/s/%E /%E edited by /' |
     sed '/%E/s/,$/,/' |
@@ -134,29 +168,46 @@ bb () {
     \\def\\endref{\\kern1pt\\endgroup\\smallbreak\\noindent}\
     \
     \\beginref ' |
-    sed '/\\beginref $/d'
+    sed '/\\beginref $/d' |
+    sed '/\\beginref \\endref$/d'
 
     if test -f ./ref.tmp; then
         rm ./ref.tmp
     fi
 }
 
+# Convert a TeX file to PDF. -r adds the references (by calling bb)
 pdf() {
-    if test "$#" -ne 1 && test "$#" -ne 2; then
-        echo "$0: Wrong number of arguments."
-        exit 3
-    fi
-    filename=""
-    if test "$1" = "-r"; then
-        filename="$2"
-        cat "$filename".tex > pdftemp.tex
-        bb "$filename".ref >> pdftemp.tex
+    refs=0
+    out=0
+    while test $# -gt 0; do
+        case "$1" in
+            -r)
+                shift
+                refs=1
+                ;;
+            -o)
+                shift
+                out=1
+                ;;
+            *)
+                break
+                ;;
+            esac
+        done
+    if test $refs; then
+        cat "$1".tex > pdftemp.tex
+        bb "$1".ref >> pdftemp.tex
         sed -i '' 's/\\bye//g' pdftemp.tex
         echo '\\bye' >> pdftemp.tex
     else
+        $1="$1"
         cat "$1".tex > pdftemp.tex
     fi
     tex pdftemp.tex && dvipdfm pdftemp.dvi
-    mv pdftemp.pdf "$filename".pdf
+    mv ./pdftemp.pdf ./"$1".pdf
+    if test $out; then
+        mv pdftemp.tex "$1"out.tex
+    fi
     rm pdftemp*
 }
