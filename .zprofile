@@ -8,6 +8,8 @@ alias skim='/Applications/Skim.app/Contents/MacOS/Skim'
 alias rer='source ranger'
 export PATH="$PATH:/usr/local/smlnj/bin"
 
+eval `opam env`
+
 # Written by Luc Devroye
 sortbibnameA () {
     filename=$1
@@ -48,8 +50,9 @@ sortbibnameA () {
 # Luc Devroye
 # 13 October 1990
 #
-# Adapted by Marcel Goh
-# 6 July 2020
+# Edited (and extensively commented) by Marcel Goh
+# 23 July 2020
+#
 # Troff biblio files:  that are already in semi-TEX format,
 #			i.e. no multiple lines
 #			no accents in \*. format where . is '`:^
@@ -63,95 +66,105 @@ bb () {
         then rm ./ref.tmp
         fi
     sortbibnameA $1 |  sed '/\\0/s// /g'  > ./ref.tmp
-    # $SORTBIB -sA+D $1bb  |  sed '/\\0/s// /g'  > /tmp/ref.$$ 
-        # uncomment
-    # sed '/\\0/s// /g' R > /tmp/ref.$$          
-        # remove later
-    #clean /tmp/ref.$$ 
     echo "" >> ./ref.tmp
-    awk 'BEGIN { count=0 ; author=0 ; tslanted = 0 ; totalauthor=0 }\
-        $0 == "" { count += 1 ; p=0 ;  author=0   }\
-        $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
-        $1 == "%T" { p=20  ; author=0}\
-        $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
-        $1 == "%L" { p=50 ; author=0}\
-        $1 == "%E" { p=55 ; author=0 }\
-        $1 == "%V" { p=60  ; author=0}\
-        $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
-        $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
-        $1 == "%C" { p=140 ; author=0 }\
-        $1 == "%I" { p=160 ; author=0 }\
-        $1 == "%D" { p=180 ; author=0 }\
-        $1 == "%O" { p=200  ; author=0}\
-        $1 == "%P" { p=210 ; author=0}\
-        $1 == "%Y" { p=220 ; author=0}\
-        /^$/ { print count*250+p+NR " " 0 " %K " totalauthor " " tslanted ; totalauthor = 0 ; tslanted = 0 }\
-        /^$/||/^%[ATJVLPDOBREICY]/ { print count*250+p+NR+1 " " author " " $0 }\
+    # This pass:
+    # + Counts the total number of authors per reference;
+    # + Checks if title is slanted (0: yes, 1: no);
+    # + Checks if city of publication is included (0: no, 1: yes);
+    # + Checks if page range is included (0: no, 1: yes).
+    # This is all printed on a %K line:
+    #   %K [total authors] [tslanted] [city] [pages]
+    awk 'BEGIN { tslanted = 0 ; totalauthor=0 ; city=0 ; pages=0 }\
+        $1 == "%A" { totalauthor+=1 }\
+        $1 == "%J" { tslanted=1 }\
+        $1 == "%B" { tslanted=1 }\
+        $1 == "%R" { tslanted=1 }\
+        $1 == "%C" { city=1 }\
+        $1 == "%P" { pages=1 }\
+        /^$/ { print "%K " totalauthor " " tslanted " " city " " pages;
+               totalauthor=0 ; tslanted=0 ; city=0 ; pages=0 }\
+        /^$/||/^%[ATJVLPDOBREICY]/ { print $0 }\
     ' ./ref.tmp |
-    sort -n |
-    sed '/^.*%/s//%/' |
-    awk 'substr( $0 , 1 , 1 ) != "%" { print "" } substr($0, 1, 1) == "%" { print $0 }' |
-    awk 'BEGIN { count=0 ; author=0 ; tslanted = 0 ; totalauthor=0 }\
-        $0 == "" { count += 1 ; p=-40 ;  author=0   }\
+    # This pass assigns a number to each field; %K gets a very small value.
+    awk 'BEGIN { count=0 }\
+        $0 == "" { count += 1 ; p=-40 }\
         $1 == "%K" { p=-20 }\
-        $1 == "%A" { p=0 ; author += 1 ; totalauthor=author }\
-        $1 == "%T" { p=20  ; author=0}\
-        $1 == "%J" { p=40  ; author=0 ; tslanted = 1 }\
-        $1 == "%L" { p=50 ; author=0}\
-        $1 == "%E" { p=55 ; author=0 }\
-        $1 == "%V" { p=60  ; author=0}\
-        $1 == "%B" { p=40 ; author=0 ; tslanted = 1 }\
-        $1 == "%R" { p=100 ; author=0  ; tslanted = 1}\
-        $1 == "%C" { p=140 ; author=0 }\
-        $1 == "%I" { p=160 ; author=0 }\
-        $1 == "%D" { p=180 ; author=0 }\
-        $1 == "%O" { p=200  ; author=0}\
-        $1 == "%P" { p=210 ; author=0}\
-        $1 == "%Y" { p=220 ; author=0}\
-        { print count*300+p+NR " " author " " $0 }\
+        $1 == "%A" { p=0 }\
+        $1 == "%T" { p=20 }\
+        $1 == "%J" { p=40 }\
+        $1 == "%B" { p=40 }\
+        $1 == "%L" { p=50 }\
+        $1 == "%E" { p=55 }\
+        $1 == "%V" { p=60 }\
+        $1 == "%R" { p=100 }\
+        $1 == "%C" { p=140 }\
+        $1 == "%I" { p=160 }\
+        $1 == "%D" { p=180 }\
+        $1 == "%P" { p=210 }\
+        $1 == "%Y" { p=220 }\
+        $1 == "%O" { p=230 }\
+        { print count*300+p+NR " " $0 }\
     ' |
-    sort -n  |
+    sort -n  | # Sorts the fields
     sed '/^.*%/s//%/' |
     sed '/^[0-9\-]/s/^.*$//' |
+    # This pass:
+    # + Indexes the authors (0: not an author field, n: nth author in list);
+    # + Moves contents of %K line to every line in that reference.
     awk 'BEGIN { ac = 0 }\
-        $1 == "%K" { ac = 0 ; slant = $3 ; author = $2 }\
-        $1 == "%A" { ac += 1 }\
-        $1 != "%K" { print slant " " author " " ac " " $0 }\
+        $0 == "" { print "" }
+        $1 == "%K" { authorindex = 0 ; totalauthor=$2 ; tslanted=$3 ; city=$4 ; pages=$5 }\
+        $1 == "%A" { authorindex += 1 }\
+        $1 != "%K" && $0 != "" { print tslanted " " totalauthor " " authorindex " " city " " pages " " $0 }\
     ' |
-    awk '$4 == "%P" || $4 == "%O" { print $0 "." }\
-    $4 != "%P" && $4 != "%O" { print $0 ","} ' |
-    sed '/^..2 1.*%A/s/,$//' |
-    # sed '/%V/s/%V /%V vol.\~/' |
+    # Result of previous pass is that
+    # $1 = tslanted; $2 = total no. of authors; $3 = index of this author;
+    # $4 = city flag; $5 pages flag; $6 = %_ marker.
+    awk 'match($0,"%O") == 0 { print $0 ","}\
+         match($0,"%O") != 0 { print $0 }' |  # Add a comma to every line, except %O lines.
+    sed '/^..2 1.*%A/s/,$//' |      # If there are two authors, delete comma after first author.
     sed '/%V/s/%V /%V {\\bf /' |    # Make volume no. boldface
     sed '/%V/s/,$/}/' |             # Remove comma from volume no.
     sed '/%J/s/,$/}\\\//' |         # Remove comma from journal
-    #sed '/%P/s/%P /%P p.\~/'  |
-    #sed '/%P.*-/s/%P p/%P pp/' |
-    sed '/%D/s/%D /%D (/' |
+    sed '/%D/s/%D /%D (/' |         # Date of paper gets brackets
     sed '/%D/s/,$/),/' |
-    sed '/%C/s/%C /%C (/' |
-    sed '/%C/s/,$/:/' |
-    sed '/%Y/s/,$/)./' |
-    sed '/%P/s/-/--/' |
+    # Check if city is 0 or 1 and put opening bracket accordingly
+    awk '$4 == "0" { gsub(/%I /,"%I (") }\
+         $4 == "1" { gsub(/%C /,"%C (") }\
+         { print $0 }' |
+    # Check if pages is 0 or 1 and put period accordingly
+    awk '$5 == "0" && match($0,"%D") != 0 { gsub(/,$/,".") }\
+         $5 == "1" && match($0,"%P") != 0 { gsub(/,$/,".") }
+         { print $0 }' |
+    sed '/%C/s/,$/:/' |             # Put colon after city
+    sed '/%Y/s/,$/)./' |            # Put period after book year
+    sed '/%P/s/-/--/' |             # Proper dashes for page ranges
     sed '/%E/s/%E /%E edited by /' |
     sed '/%E/s/,$/,/' |
-    sed '/^0.*%T/s/%T /%T {\\sl /' |
-    sed "/^0.*%T/s/,$/}/" |
-    sed '/^1.*%T/s/%T /%T ``/' |
-    sed "/^1.*%T/s/,$/,''/" |
-    sed '/%J/s/%J /%J {\\sl /' |
+    # Check if tslanted is 0 or 1 and add {\sl .. } or `` .. '' accordingly
+    # (octal code 047 is the ' character)
+    awk '$1 == "0" { gsub(/%T /,"%T {\\sl ") }\
+         $1 == "0" && match($0,"%T") != 0 { gsub(/,$/,"\}") }\
+         $1 == "1" { gsub(/%T /,"%T ``") }\
+         $1 == "1" && match($0,"%T") != 0 { gsub(/,$/,",\047\047") }\
+         { print $0 }' |
+    sed '/%J/s/%J /%J {\\sl /' |    # Journal is slanted if it's there.
     sed "/%J/s/,$/},/" |
     sed '/%B/s/%B /%B in: {\\sl /'  |
     sed "/%B/s/,$/},/"  |
-    awk ' $2 == $3 && $2 != "1" { print "XXX" $0 } $2 != $3 || $2 == "1" { print $0 } '  |
+    # Add `and' after last author
+    awk '$2 == $3 && $2 != "1" { print "XXX" $0 }\
+         $2 != $3 || $2 == "1" { print $0 } '  |
     sed '/XXX/s/%A /%A and /' |
     sed '/XXX/s///' |
     sed '/%[AE]/s/[A-Za-z]\. */&XXX/g' |
     sed '/XXX/s/ *XXX/\~/g'  |
+    # Final cleanup
     sed '/\.\~-/s//\.-/g'  |
     sed '/^[0-9 ,]*$/s/^.*$//'  |
     sed '/^.*%../s///' |
     sed '/\\:/s//\\"/' |
+    # Preambles etc.
     sed '/^$/c\
     \\endref\
     \
@@ -166,6 +179,9 @@ bb () {
       \\everypar\{\\strut\}\
     }\
     \\def\\endref{\\kern1pt\\endgroup\\smallbreak\\noindent}\
+    \\font\\smallheader=cmssbx10\
+    \\bigskip\\vskip\\parskip\
+    \\leftline{\\smallheader References}\\nobreak\\medskip\\noindent\
     \
     \\beginref ' |
     sed '/\\beginref $/d' |
@@ -177,6 +193,7 @@ bb () {
 }
 
 # Convert a TeX file to PDF. -r adds the references (by calling bb)
+# Written by Marcel Goh
 pdf() {
     refs=0
     out=0
