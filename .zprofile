@@ -10,6 +10,8 @@ export PATH="$PATH:/usr/local/smlnj/bin"
 
 eval `opam env`
 
+# Functions for references
+
 # Written by Luc Devroye
 sortbibnameA () {
     filename=$1
@@ -83,12 +85,13 @@ bb () {
         $1 == "%P" { pages=1 }\
         /^$/ { print "%K " totalauthor " " tslanted " " city " " pages;
                totalauthor=0 ; tslanted=0 ; city=0 ; pages=0 }\
-        /^$/||/^%[ATJVLPDOBREICY]/ { print $0 }\
+        /^$/||/^%[ATJVLPDOBREICYQ]/ { print $0 }\
     ' ./ref.tmp |
     # This pass assigns a number to each field; %K gets a very small value.
     awk 'BEGIN { count=0 }\
         $0 == "" { count += 1 ; p=-40 }\
         $1 == "%K" { p=-20 }\
+        $1 == "%Q" { p=-10 }\
         $1 == "%A" { p=0 }\
         $1 == "%T" { p=20 }\
         $1 == "%J" { p=40 }\
@@ -120,8 +123,8 @@ bb () {
     # Result of previous pass is that
     # $1 = tslanted; $2 = total no. of authors; $3 = index of this author;
     # $4 = city flag; $5 pages flag; $6 = %_ marker.
-    awk 'match($0,"%O") == 0 { print $0 ","}\
-         match($0,"%O") != 0 { print $0 }' |  # Add a comma to every line, except %O lines.
+    awk 'match($0,"%O") == 0 && match($0,"%Q") == 0 { print $0 "," ; next }\
+         { print $0 }' |  # Add a comma to every line, except %O and %Q lines.
     sed '/^..2 1.*%A/s/,$//' |      # If there are two authors, delete comma after first author.
     sed '/%V/s/%V /%V {\\bf /' |    # Make volume no. boldface
     sed '/%V/s/,$/}/' |             # Remove comma from volume no.
@@ -152,6 +155,8 @@ bb () {
     sed "/%J/s/,$/},/" |
     sed '/%B/s/%B /%B in: {\\sl /'  |
     sed "/%B/s/,$/},/"  |
+    sed '/%Q/s/%Q /%Q \\parindent=20pt\\item{\\ref{/' |    # Q-tags get an \item{\ref{}} macro.
+    sed "/%Q/s/$/}}/" |
     # Add `and' after last author
     awk '$2 == $3 && $2 != "1" { print "XXX" $0 }\
          $2 != $3 || $2 == "1" { print $0 } '  |
@@ -174,14 +179,12 @@ bb () {
     \\hyphenpenalty=-1000 \\pretolerance=-1 \\tolerance=1000\
     \\doublehyphendemerits=-100000 \\finalhyphendemerits=-100000\
     \\frenchspacing\
-    \\def\\beginref{\
-      \\par\\begingroup\\nobreak\\smallskip\\parindent=0pt\\kern1pt\\nobreak\
-      \\everypar\{\\strut\}\
+    \\def\\beginref{\\noindent\
     }\
-    \\def\\endref{\\kern1pt\\endgroup\\smallbreak\\noindent}\
+    \\def\\endref{\\medskip}\
     \\font\\smallheader=cmssbx10\
     \\bigskip\\vskip\\parskip\
-    \\leftline{\\smallheader References}\\nobreak\\medskip\\noindent\
+    \\leftline{\\smallheader References}\\nobreak\\bigskip\\noindent\
     \
     \\beginref ' |
     sed '/\\beginref $/d' |
@@ -192,13 +195,83 @@ bb () {
     fi
 }
 
+# All references in $1.ref that don't appear in $1.tex are removed.
+# The remaining references are sorted, numbered, and then all
+# the tags are replaced with the corresponding number in $1.tex and $1.ref.
+# These two files can safely be fed into bb.
+
+numberrefs() {
+    if test -f ./ref.tmp
+        then rm ./ref.tmp
+        fi
+    cp "$1.tex" "$1.texbak"
+    echo '\\def\\ref#1{[#1]}' > "$1.tex"
+    cat "$1.texbak" >> "$1.tex"
+
+    echo "" >> "$1.ref"
+
+    # Number the entries and surround entries with ENTRY [n] [...] YRTNE [n]
+    awk 'BEGIN { count=0 ; inpara=0 ; foundq=0 ; q=""}\
+         $1 == "%Q" { foundq=1 ; q=$2 }\
+         inpara == 0 && $0 != "" { inpara=1 ; count+=1 ; print "ENTRY " count ; print $0 ; next }\
+         $0 == "" && inpara == 1 { inpara=0 ; print "YRTNE " count ; print $0 ; next }\
+         { print $0 }' $1.ref > ./ref.tmp
+
+    cp ./ref.tmp "$1.ref"
+    # Mark entries whose references actually appear in $1.tex with FOUNDENTRY
+    curridx=0
+    keyword=""
+    while IFS= read -r line; do
+        firstword=$(echo $line | awk '{ print $1 }')
+        if [[ "$firstword" == "ENTRY" ]]; then
+            curridx=$(echo $line | awk '{ print $2 }')
+            fi
+        if [[ "$firstword" == "%Q" ]]; then
+            keyword=$(echo $line | awk '{ print $2 }')
+            if grep -q "ref{$keyword}" "$1.tex"; then
+                sed -i '' "s/ENTRY $curridx/FOUNDENTRY $curridx/g" "$1.ref"
+            fi
+        fi
+    done < ./ref.tmp
+
+    cp "$1.ref" ./ref.tmp
+    # Delete all lines except %lines that appear between FOUNDENTRY and YRTNE
+    awk 'BEGIN { del=1 }\
+         $1 == "FOUNDENTRY" { del=0 ; next }\
+         $1 == "YRTNE" { del=1 }\
+         $0 == "" || del == 0 { print $0 }' ./ref.tmp > "$1.ref"
+    sortbibnameA "$1.ref" | sed '/\\0/s// /g' > ./ref.tmp
+
+    curridx=0
+    inpara=0
+    while IFS= read -r line; do
+        firstword=$(echo $line | awk '{ print $1 }')
+        if [[ "$line" != "" ]] && test $inpara -eq 0; then
+            inpara=1
+            curridx=$((curridx+1))
+        elif [[ "$line" == "" ]] && test $inpara -eq 1; then
+            inpara=0
+            fi
+        if [[ "$firstword" == "%Q" ]]; then
+            keyword=$(echo $line | awk '{ print $2 }')
+            sed -i '' "s/$keyword/$curridx/g" "$1.ref"
+            sed -i '' "s/$keyword/$curridx/g" "$1.tex"
+        fi
+    done < ./ref.tmp
+}
+
 # Convert a TeX file to PDF. -r adds the references (by calling bb)
 # Written by Marcel Goh
 pdf() {
     refs=0
+    num=0
     out=0
     while test $# -gt 0; do
         case "$1" in
+            -n)
+                shift
+                num=1
+                ;;
             -r)
                 shift
                 refs=1
@@ -212,19 +285,50 @@ pdf() {
                 ;;
             esac
         done
-    if test $refs; then
+
+    if test -f "./$1.texbak"
+        then rm "./$1.texbak"
+        fi
+    if test -f "./$1out.tex"
+        then rm "./$1out.tex"
+        fi
+    if test -f "./$1.refbak"
+        then rm "./$1.refbak"
+        fi
+    cp "$1.tex" "$1.texbak"
+
+    if test $num -eq 1 || test $refs -eq 1; then
+        cp "$1.ref" "$1.refbak"
+    fi
+    if test $num -eq 1; then
+        numberrefs $1
+    elif test $refs -eq 1; then
+        awk '$1 != "%Q" { print $0 }' "$1.ref" > ./ref.tmp && mv ./ref.tmp "$1.ref"
+    fi
+    if test $refs -eq 1; then
         cat "$1".tex > pdftemp.tex
         bb "$1".ref >> pdftemp.tex
         sed -i '' 's/\\bye//g' pdftemp.tex
         echo '\\bye' >> pdftemp.tex
     else
-        $1="$1"
         cat "$1".tex > pdftemp.tex
+        if test -f "$1.idx"; then
+            cat "$1".idx > pdftemp.idx
+        fi
+        if test -f "$1.scn"; then
+            cat "$1".scn > pdftemp.scn
+        fi
+    fi
+
+    if test $num -eq 1 || test $refs -eq 1; then
+        mv "$1.texbak" "$1.tex"
+        mv "$1.refbak" "$1.ref"
     fi
     tex pdftemp.tex && dvipdfm pdftemp.dvi
     mv ./pdftemp.pdf ./"$1".pdf
-    if test $out; then
+    if test $out -eq 1; then
         mv pdftemp.tex "$1"out.tex
     fi
     rm pdftemp*
 }
+
