@@ -97,3 +97,17 @@ source $ZSH/oh-my-zsh.sh
 # Example aliases
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
+
+# opam configuration
+test -r /Users/marcel/.opam/opam-init/init.zsh && . /Users/marcel/.opam/opam-init/init.zsh > /dev/null 2> /dev/null || true
+
+export PATH="$PATH":/home/user/bin
+export PKG_CONFIG_PATH="/usr/local/Cellar/ruby/lib/pkgconfig"
+
+export LDFLAGS="-L/usr/local/opt/openssl/lib"
+export CPPFLAGS="-I/usr/local/opt/openssl/include"
+
+export PATH="$HOME/.rbenv/bin:$PATH"
+eval "$(rbenv init -)"
+
+# eval $(rbenv init -)

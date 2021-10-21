@@ -114,6 +114,8 @@ bb () {
     # This pass:
     # + Indexes the authors (0: not an author field, n: nth author in list);
     # + Moves contents of %K line to every line in that reference.
+    awk '$1 == "%Q" { print $0 ; print "%Z " $2 ; next }\
+        { print $0 }' |
     awk 'BEGIN { ac = 0 }\
         $0 == "" { print "" }
         $1 == "%K" { authorindex = 0 ; totalauthor=$2 ; tslanted=$3 ; city=$4 ; pages=$5 }\
@@ -123,8 +125,8 @@ bb () {
     # Result of previous pass is that
     # $1 = tslanted; $2 = total no. of authors; $3 = index of this author;
     # $4 = city flag; $5 pages flag; $6 = %_ marker.
-    awk 'match($0,"%O") == 0 && match($0,"%Q") == 0 { print $0 "," ; next }\
-         { print $0 }' |  # Add a comma to every line, except %O and %Q lines.
+    awk 'match($0,"%O") == 0 && match($0,"%Q") == 0 && match($0,"%Z") == 0 { print $0 "," ; next }\
+         { print $0 }' | # Add a comma to every line, except %O, %Q, and %Z lines.
     sed '/^..2 1.*%A/s/,$//' |      # If there are two authors, delete comma after first author.
     sed '/%V/s/%V /%V {\\bf /' |    # Make volume no. boldface
     sed '/%V/s/,$/}/' |             # Remove comma from volume no.
@@ -155,9 +157,11 @@ bb () {
     sed "/%J/s/,$/},/" |
     sed '/%B/s/%B /%B in: {\\sl /'  |
     sed "/%B/s/,$/},/"  |
-    sed '/%Q/s/%Q /%Q \\parindent=20pt\\item{\\ref{/' |    # Q-tags get an \item{\ref{}} macro.
+    sed '/%Q/s/%Q /%Q \\parindent=20pt\\item{\\bref{/' |    # Q-tags get an \item{\bref{}} macro
     sed "/%Q/s/$/}}/" |
-    # Add `and' after last author
+    sed '/%Z/s/%Z /%Z \\hldest{xyz}{}{bib/' |    # Z-tags get a \hldest macro
+    sed "/%Z/s/$/}%/" |
+    # Add `and' before last author
     awk '$2 == $3 && $2 != "1" { print "XXX" $0 }\
          $2 != $3 || $2 == "1" { print $0 } '  |
     sed '/XXX/s/%A /%A and /' |
@@ -179,12 +183,11 @@ bb () {
     \\hyphenpenalty=-1000 \\pretolerance=-1 \\tolerance=1000\
     \\doublehyphendemerits=-100000 \\finalhyphendemerits=-100000\
     \\frenchspacing\
+    \\def\\bref#1{[#1]}\
     \\def\\beginref{\\noindent\
     }\
     \\def\\endref{\\medskip}\
-    \\font\\smallheader=cmssbx10\
-    \\bigskip\\vskip\\parskip\
-    \\leftline{\\smallheader References}\\nobreak\\bigskip\\noindent\
+    \\vskip\\parskip\
     \
     \\beginref ' |
     sed '/\\beginref $/d' |
@@ -206,6 +209,7 @@ numberrefs() {
         fi
     cp "$1.tex" "$1.texbak"
     echo '\\def\\ref#1{[#1]}' > "$1.tex"
+    echo '\\def\\hldest#1#2#3{}' > "$1.tex"
     cat "$1.texbak" >> "$1.tex"
 
     echo "" >> "$1.ref"
@@ -217,6 +221,7 @@ numberrefs() {
          $0 == "" && inpara == 1 { inpara=0 ; print "YRTNE " count ; print $0 ; next }\
          { print $0 }' $1.ref > ./ref.tmp
 
+    # cat ./ref.tmp
     cp ./ref.tmp "$1.ref"
     # Mark entries whose references actually appear in $1.tex with FOUNDENTRY
     curridx=0
@@ -228,12 +233,15 @@ numberrefs() {
             fi
         if [[ "$firstword" == "%Q" ]]; then
             keyword=$(echo $line | awk '{ print $2 }')
+            # echo $keyword
             if grep -q "ref{$keyword}" "$1.tex"; then
-                sed -i '' "s/ENTRY $curridx/FOUNDENTRY $curridx/g" "$1.ref"
+                # echo "found $keyword"
+                sed -i '' "s/^ENTRY $curridx$/FOUNDENTRY $curridx/g" "$1.ref"
             fi
         fi
     done < ./ref.tmp
 
+    # cat "$1.ref"
     cp "$1.ref" ./ref.tmp
     # Delete all lines except %lines that appear between FOUNDENTRY and YRTNE
     awk 'BEGIN { del=1 }\
@@ -254,8 +262,10 @@ numberrefs() {
             fi
         if [[ "$firstword" == "%Q" ]]; then
             keyword=$(echo $line | awk '{ print $2 }')
-            sed -i '' "s/$keyword/$curridx/g" "$1.ref"
-            sed -i '' "s/$keyword/$curridx/g" "$1.tex"
+            sed -i '' "s/%Q $keyword/%Q $curridx/g" "$1.ref"
+            sed -i '' "s/\\ref{$keyword}/\\ref{$curridx}/g" "$1.tex"
+            sed -i '' "s/\\bref{$keyword}/\\bref{$curridx}/g" "$1.tex"
+            sed -i '' "s/\\hldest{xyz}{}{bib$keyword}/\\hldest{xyz}{bib{$curridx}/g" "$1.tex"
         fi
     done < ./ref.tmp
 }
@@ -286,32 +296,26 @@ pdf() {
             esac
         done
 
-    if test -f "./$1.texbak"
-        then rm "./$1.texbak"
-        fi
     if test -f "./$1out.tex"
         then rm "./$1out.tex"
         fi
-    if test -f "./$1.refbak"
-        then rm "./$1.refbak"
-        fi
-    cp "$1.tex" "$1.texbak"
 
+    cat "$1".tex > pdftemp.tex
     if test $num -eq 1 || test $refs -eq 1; then
-        cp "$1.ref" "$1.refbak"
+        cat "$1".ref > pdftemp.ref
     fi
     if test $num -eq 1; then
-        numberrefs $1
+        numberrefs pdftemp
     elif test $refs -eq 1; then
-        awk '$1 != "%Q" { print $0 }' "$1.ref" > ./ref.tmp && mv ./ref.tmp "$1.ref"
+        awk '$1 != "%Q" { print $0 }' pdftemp.ref > ./ref.tmp &&
+            mv ./ref.tmp pdftemp.ref
     fi
     if test $refs -eq 1; then
-        cat "$1".tex > pdftemp.tex
-        bb "$1".ref >> pdftemp.tex
+        bb pdftemp.ref >> pdftemp.tex
         sed -i '' 's/\\bye//g' pdftemp.tex
-        echo '\\bye' >> pdftemp.tex
+        echo '\\goodbreak\
+        \\bye' >> pdftemp.tex
     else
-        cat "$1".tex > pdftemp.tex
         if test -f "$1.idx"; then
             cat "$1".idx > pdftemp.idx
         fi
@@ -320,15 +324,20 @@ pdf() {
         fi
     fi
 
-    if test $num -eq 1 || test $refs -eq 1; then
-        mv "$1.texbak" "$1.tex"
-        mv "$1.refbak" "$1.ref"
-    fi
-    tex pdftemp.tex && dvipdfm pdftemp.dvi
-    mv ./pdftemp.pdf ./"$1".pdf
+    tex pdftemp.tex -jobname "$1" && dvips -z pdftemp.dvi
+    sed -i "" "s/\[1 1 1 \[/\[0 0 0 \[/g" pdftemp.ps  # gets rid of boxes
+    ps2pdf pdftemp.ps
+    mv pdftemp.ps "$1".ps
+    mv pdftemp.pdf "$1".pdf
     if test $out -eq 1; then
         mv pdftemp.tex "$1"out.tex
     fi
     rm pdftemp*
 }
 
+
+## Macaulay 2 start
+if [ -f ~/.profile-Macaulay2 ]
+then . ~/.profile-Macaulay2
+fi
+## Macaulay 2 end
