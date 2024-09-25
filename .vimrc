@@ -50,6 +50,13 @@ map <S-down> <down>
 imap <S-up> <up>
 imap <S-down> <down>
 
+" My sausage fingers keep pressing PageUp and PageDown
+" instead of left and right
+map <PageUp> <left>
+imap <PageUp> <left>
+map <PageDown> <right>
+imap <PageDown> <right>
+
 " Press kj or KJ to enter normal mode
 imap kj <Esc>
 imap KJ <Esc>
@@ -60,6 +67,7 @@ au BufReadPost *.bel set syntax=beluga
 au BufReadPost *.tut set syntax=tutch
 au BufReadPost *.pro set syntax=prolog
 au BufReadPost *.opy set syntax=python
+au BufReadPost *.sage set syntax=python
 au BufReadPost *.ml,*mli compiler ocaml
 au BufReadPost *.pde set syntax=processing
 
